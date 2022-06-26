@@ -93,7 +93,7 @@
                     </div>
 
                     <div v-else class="flex flex-col divide-y">
-                      <div v-for="r in clearanceItem.requirements" class="flex justify-between py-2">
+                      <div :key="'requirement_' + i" v-for="(r, i) in clearanceItem.requirements" class="flex justify-between py-2">
                         <p>{{ r.remarks }}</p>
                         <div class="flex space-x-2 items-center">
                           <p class="font-bold">{{ statusText(r.status) }}</p>
@@ -120,11 +120,12 @@ import LoadingContainer from '../components/ui/LoadingContainer.vue';
 import PromiseLoader from '../components/ui/PromiseLoader.vue';
 import SelfModalWindow from '../components/ui/SelfModalWindow.vue';
 import Skeleton from '../components/ui/Skeleton.vue';
-import { useSemesterQuery, useStudentQuery } from '../stores/studentStore';
+import { currentSemesterIdKey, useSemesterQuery, useStudentQuery } from '../stores/studentStore';
 import { catchAndNotifyError } from '../utils';
 import ClearanceStatusIcon from '../components/Clearance/ClearanceStatusIcon.vue';
 import { generateClearancePDF, useClearanceQuery } from '../stores/clearanceStore';
 import { notify } from 'notiwind';
+import { inject } from 'vue';
 
 export default {
   components: {
@@ -137,14 +138,16 @@ export default {
     ClearanceStatusIcon,
   },
   setup() {
-    const { query: { data }, isCleared, isLoading } = useClearanceQuery();
-    const { hasSemesterId, currentSemester } = useSemesterQuery();
+    const currentSemesterId = inject(currentSemesterIdKey);
+    const { hasSemesterId, currentSemester } = useSemesterQuery(currentSemesterId!);
+    const { query: { data }, isCleared, isLoading } = useClearanceQuery(currentSemesterId!);
     const { normalizedFirstName: studentFirstName } = useStudentQuery();
-    const { data: fileUrl, isSuccess, refetch } = generateClearancePDF();
+    const { data: fileUrl, isSuccess, refetch } = generateClearancePDF(currentSemesterId!);
     const printPdf = async () => {
       if (!hasSemesterId) return;
-      notify({ type: 'info', text: 'Downloading PDF...' }, 10 * 1000);
+      const { close } = notify({ type: 'info', text: 'Downloading PDF...' }, Infinity);
       await refetch.value();
+      close();
       if (!isSuccess.value) return;
       const pdfPreviewTab = window.open(fileUrl.value, '_blank');
       if (!pdfPreviewTab) {

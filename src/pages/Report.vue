@@ -62,7 +62,11 @@
         </div>
         <div class="rounded-b-xl">
           <div class="flex flex-col divide-y dark:divide-primary-600">
-            <div :key="'sem_' + j + '_sub_' + i" v-for="(ar, i) in r.reports" class="flex items-center">
+            <div class="flex items-center justify-center" v-if="r.report.courses.length == 0">
+              <p class="text-center text-2xl py-8">No grades found.</p>
+            </div>
+            
+            <div :key="'sem_' + j + '_sub_' + i" v-for="(ar, i) in r.report.courses" class="flex items-center">
               <div class="<md:hidden w-1/9 px-3 md:px-6 py-2 md:py-4">
                 <skeleton custom-class="w-8 md:w-11 h-5 md:h-7.5 bg-gray-400">
                   <p class="font-semibold">{{ ar.code }}</p>
@@ -83,7 +87,7 @@
               </div>
               <div :key="'grade_' + gKey" v-for="(gLabel, gKey) in gradeKeysAndLabels" class="w-1/9 px-2 md:px-4 py-2 md:py-3 <md:text-center">
                 <skeleton custom-class="w-6 md:w-11 h-5 md:h-7.5 mt-1 mb-3 bg-gray-400">
-                  <p class="text-xl md:text-3xl font-semibold">{{ ar[gKey] ?? '--' }}</p>
+                  <p class="text-xl md:text-3xl font-semibold">{{ ar[gKey] && ar[gKey] > 40 ? ar[gKey] : '--' }}</p>
                 </skeleton>
                 <skeleton custom-class="w-5 md:w-14 <md:h-3.5 h-4 bg-gray-200">
                   <p 
@@ -95,7 +99,7 @@
               <div class="w-1/9 px-2 md:px-4 py-2 md:py-3 <md:text-center flex flex-col">
                 <skeleton custom-class="w-6 md:w-11 h-5 md:h-7.5 mt-1 mb-3 bg-primary-400">
                   <p class="text-xl text-primary-800 dark:text-primary-200 md:text-3xl font-semibold <md:my-auto">
-                    {{ ar.overallGrade ?? '--' }}
+                    {{ ar.overallGrade && typeof ar.overallGrade == 'number' ? ar.overallGrade : '--' }}
                   </p>
                 </skeleton>
                 <skeleton custom-class="w-5 md:w-14 <md:h-3.5 h-4 bg-gray-200">
@@ -118,21 +122,29 @@ import { generateAcademicRecordsPDF, useAcademicRecordsQuery } from '../stores/a
 import IconPrint from '~icons/ion/print';
 import { catchAndNotifyError } from '../utils';
 import SelfModal from '../components/ui/SelfModal.vue';
-import { readonly, ref } from 'vue';
+import { computed, inject, readonly, ref } from 'vue';
 
 import computationFormulaImg from '../assets/computation-formula.png';
 import Skeleton from '../components/ui/Skeleton.vue';
+import { currentSemesterIdKey, useSemesterQuery } from '../stores/studentStore';
 
 export default {
   components: { PromiseLoader, LoadingContainer, DashboardScaffold, IconPrint, SelfModal, Skeleton },
   setup() {
+    const currentSemesterId = inject(currentSemesterIdKey);
+    const { currentSemester } = useSemesterQuery(currentSemesterId);
     const { 
       isLoading, 
       latestAcademicRecords, 
-      overallAverages, 
-      semesterDisplayNames, 
-      overallUnits 
-    } = useAcademicRecordsQuery();
+      overallAverages,
+      overallUnits
+    } = useAcademicRecordsQuery(currentSemesterId!);
+
+    const semesterDisplayNames = computed(() => {
+      return [
+        currentSemester.value.display
+      ];
+    });
 
     const gradeKeysAndLabels = readonly({
       'prelimGrade': 'Prelim',
@@ -145,16 +157,18 @@ export default {
       isLoading,
       overallAverages,
       overallUnits,
-      semesterDisplayNames,
       computationFormulaImg: ref(computationFormulaImg),
-      gradeKeysAndLabels
+      gradeKeysAndLabels,
+      currentSemesterId,
+      semesterDisplayNames
     }
   },
   methods: {
     async printPdf() {
       try {
-        this.$notify({ type: 'info', text: 'Downloading PDF...' }, 10 * 1000);
-        const fileUrl = await generateAcademicRecordsPDF();
+        const { close } = this.$notify({ type: 'info', text: 'Downloading PDF...' }, Infinity);
+        const fileUrl = await generateAcademicRecordsPDF(this.currentSemesterId!.toString());
+        close();
         const pdfPreviewTab = window.open(fileUrl, '_blank');
         if (pdfPreviewTab) {
           pdfPreviewTab.focus();

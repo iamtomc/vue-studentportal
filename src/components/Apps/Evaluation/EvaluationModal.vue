@@ -5,7 +5,7 @@
     @update:open="warnUserOnClose"
     content-class="flex overflow-hidden"
     modal-class="max-w-4xl w-full">
-      <loading-container :is-loading="isFetching || isIdle || isProcessing" v-slot="{ isLoading }">
+      <loading-container :is-loading="isLoading || isProcessing" v-slot="{ isLoading }">
         <div v-if="isLoading" class="w-full sticky left-0 inset-y-0 flex justify-center items-center py-32">
           <loader class="h-14 w-14" />
         </div>
@@ -193,7 +193,7 @@
       </loading-container>
 
     <template #footer>
-      <div class="flex justify-end space-x-2">
+      <div v-if="shouldShowButtons" class="flex justify-end space-x-2">
         <button v-if="step > 0" @click="step--" class="button is-light">Previous</button>
         <button v-if="step < 5 + tabOffsetStart" @click="step++" :disabled="!shouldProceed(step)" class="button is-primary px-6 py-2">Next</button>
         <button v-else @click="submitEvaluation" class="button is-primary px-6 py-2">Submit</button>
@@ -203,14 +203,14 @@
 </template>
 
 <script lang="ts">
-import { computed, onBeforeUnmount, onMounted, PropType, readonly, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, PropType, readonly, ref, watch } from 'vue'
 import ModalWindow from '../../ui/ModalWindow.vue'
 import { ratings, CourseEvaluationEntry } from '@myuic-api/types'
 import { useEvaluationMutation, useEvaluationQuery } from '../../../stores/evaluationStore'
 import LoadingContainer from '../../ui/LoadingContainer.vue'
 import Loader from '../../ui/Loader.vue'
 import { TabGroup, Tab, TabList, TabPanels, TabPanel } from '@headlessui/vue'
-import { modalEventBus, showDialog } from '../../../modal'
+import { showDialog } from '../../../composables/modal'
 import Box from '../../ui/Box.vue'
 import { notify } from 'notiwind'
 import { useQueryClient } from 'vue-query'
@@ -254,9 +254,10 @@ export default {
       !Array.isArray(courses) 
       ? [{classId: course.classID ?? course.code, classType: course.classType ?? '3'}] 
       : courses.map(c => ({classId: c.classID ?? course.code, classType: c.classType ?? '3'})));
+    const isLoading = computed(() => isFetching.value || isIdle.value);
     const { mutateAsync, isLoading: isProcessing } = useEvaluationMutation();
     const totalQuestionsCount = computed(() => {
-      if (isFetching.value || isIdle.value) {
+      if (isLoading.value) {
         return 30;
       }
       return data.value?.categories.map(c => 
@@ -279,9 +280,16 @@ export default {
     }
 
     const shouldProceed = (catIdx: number) => {
-      if (isFetching.value || isIdle.value) return false;
+      if (isLoading.value) return false;
       return step.value < 4 + tabOffsetStart ? isCategoryHasAnswers(catIdx) : isCommentsFilledUp.value;
     }
+
+    const shouldShowButtons = computed(() => {
+      if (isDone.value || isProcessing.value || isLoading.value) {
+        return false;
+      }
+      return true;
+    });
 
     const isCategoryHasAnswers = (catIdx: number) => {
       if (catIdx < tabOffsetStart || catIdx > (data.value?.categories.length ?? 0) + tabOffsetStart) return true;
@@ -378,7 +386,7 @@ export default {
           notify({
             type: 'success',
             text: msg
-          }, 3000);
+          });
           isDone.value = true;
           await queryClient.refetchQueries({ 
             exact: true, 
@@ -401,8 +409,8 @@ export default {
 
     return {
       data,
-      isFetching,
-      isIdle,
+      isLoading,
+      shouldShowButtons,
       isOpen,
       getQIndex,
       ratings,
